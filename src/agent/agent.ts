@@ -37,5 +37,5 @@ async function agent(userQuery: string, loopCnt = 5) {
 
 
 
-const userQuery = "This file contain the cost i incured for a single llm call, can you please read and tell me whats the total amount, here is the full path to file /Users/spatil/Documents/sp/serprj/pi_agent/resources/llm_output.json"
+const userQuery = "can you please list all the files in current working directory ?"
 agent(userQuery)

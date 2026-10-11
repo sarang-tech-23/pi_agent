@@ -18,5 +18,19 @@ export const CUSTOM_TOOLS: ChatFunctionTool[] = [
                 required: ["filename"]
             }
         }
+    },
+    {
+        type: "function",
+        function: {
+            name: "bash",
+            description: "run the bash commands",
+            parameters: {
+                type: "object",
+                properties: {
+                    command: {type: "string", description: "give command in string to be run like bash -c command"}
+                },
+                required: ["command"]
+            }
+        }
     }
 ] 
