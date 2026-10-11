@@ -1,9 +1,9 @@
-import { readFile } from "node:fs/promises";
+import { readFile as rf } from "node:fs/promises";
 
 
-export async function readFiles(filename: string) {
+export async function readFile(filename: string) {
     try {
-        return await readFile(filename, "utf-8")
+        return await rf(filename, "utf-8")
     } catch (err) {
         return `error in reading file ${filename} :${err}`
     }
