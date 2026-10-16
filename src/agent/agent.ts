@@ -1,6 +1,6 @@
 import { llmCall } from "../provider/openrouter";
 import type { ChatMessages } from "@openrouter/sdk/models";
-import { runTool } from "../tools/executor"
+import { runTool, setReadline } from "../tools/executor"
 import { createInterface } from "node:readline/promises";
 
 export interface Message {
@@ -14,7 +14,10 @@ async function agent(messages: ChatMessages[], loopCnt = 10) {
         const llmResp = res.choices[0]?.message;
 
         console.log("-> llm_tool_call_response__", llmResp?.toolCalls?.length)
-
+        messages.push({
+            role: 'assistant',
+            content: llmResp?.content
+        })
         if (llmResp?.toolCalls?.length) {
             for (const call of llmResp.toolCalls) {
                 const args = JSON.parse(call.function.arguments)
@@ -28,6 +31,10 @@ async function agent(messages: ChatMessages[], loopCnt = 10) {
             }
         }
         else {
+            messages.push({
+                role: 'assistant',
+                content: llmResp?.content
+            })
             console.log("Final Answer: ", llmResp?.content)
             return
         }
@@ -41,6 +48,7 @@ async function main() {
     ]
 
     const rl = createInterface({ input: process.stdin, output: process.stdout })
+    setReadline(rl)
     console.log('pi_agent ready. type your query, "exit" or ctrl-d to quit.')
     rl.setPrompt("> ")
     rl.prompt()
