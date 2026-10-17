@@ -2,7 +2,16 @@
 
 ## Run in a Docker sandbox
 
-The bash tool has no guardrails yet, so run the agent inside Docker.
+The approval prompt is not a security boundary — the allowlist only checks the
+program name, so `cat /etc/passwd` is auto-approved. Run the agent inside Docker.
+
+The default mode is `auto`: every tool call runs without asking. Pass `--manual`
+(or set `PI_AGENT_MODE=manual`) to be prompted before anything that writes or runs
+a non-read-only command. Anything other than `y` is treated as a refusal.
+
+```bash
+bun run src/agent/agent.ts --manual
+```
 
 ### Build the image
 

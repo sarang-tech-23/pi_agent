@@ -25,7 +25,7 @@ type Decision = "allow" | "ask"
 const READ_ONLY = new Set(["ls", "cat", "pwd", "head", "tail", "wc", "grep", "rg", "echo", "which", "whoami"]);
 const READ_ONLY_GIT = new Set(["status", "diff", "log", "show"]);
 
-function isReadOnlyCommand(command: string): boolean {
+export function isReadOnlyCommand(command: string): boolean {
   // 1. reject anything that can chain, redirect, or substitute
   if (/[;&|<>`$(){}\n\\]/.test(command)) return false;
 

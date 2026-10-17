@@ -1,6 +1,6 @@
 import { llmCall } from "../provider/openrouter";
 import type { ChatMessages } from "@openrouter/sdk/models";
-import { runTool, setReadline } from "../tools/executor"
+import { runTool, setReadline, setMode } from "../tools/executor"
 import { createInterface } from "node:readline/promises";
 
 export interface Message {
@@ -9,37 +9,46 @@ export interface Message {
 }
 
 async function agent(messages: ChatMessages[], loopCnt = 100) {
-    while (loopCnt--) {
+    for (let turn = 0; turn < loopCnt; turn++) {
         const res = await llmCall(messages)
         const llmResp = res.choices[0]?.message;
 
         console.log("-> llm_tool_call_response__", llmResp?.toolCalls?.length)
-        messages.push({
-            role: 'assistant',
-            content: llmResp?.content
-        })
-        if (llmResp?.toolCalls?.length) {
+
+        if (!llmResp?.toolCalls?.length) {
+            // plain answer, record it once and stop
             messages.push({
                 role: "assistant",
-                content: llmResp?.content ?? null,
-                toolCalls: llmResp?.toolCalls,
-            });
-            for (const call of llmResp.toolCalls) {
-                const args = JSON.parse(call.function.arguments)
-                let toolResult = await runTool(call.function.name, args)
-                // console.log("=>> tool result: ", toolResult)
-                messages.push({
-                    role: "tool",
-                    toolCallId: call.id,
-                    content: toolResult,
-                })
-            }
-        }
-        else {
+                content: llmResp?.content
+            })
             console.log(" ######### Final Answer ######### \n ", llmResp?.content)
             return
         }
+
+        // exactly one assistant message per turn, carrying the tool calls
+        messages.push({
+            role: "assistant",
+            content: llmResp?.content ?? null,
+            toolCalls: llmResp?.toolCalls,
+        });
+
+        for (const call of llmResp.toolCalls) {
+            let toolResult: string
+            try {
+                const args = JSON.parse(call.function.arguments)
+                toolResult = await runTool(call.function.name, args)
+            } catch (err: any) {
+                // a bad tool call must not leave a dangling toolCallId in the history
+                toolResult = `Error: ${err.message}`
+            }
+            messages.push({
+                role: "tool",
+                toolCallId: call.id,
+                content: toolResult,
+            })
+        }
     }
+    console.log(`\n[stopped] hit the ${loopCnt} turn limit without a final answer.`)
 }
 
 
@@ -48,9 +57,14 @@ async function main() {
         { role: "system", content: "you are an helpfull assitent" },
     ]
 
+    // --manual / PI_AGENT_MODE=manual turns on the approval prompt in executor.ts.
+    // default stays "auto" so the docker sandbox behaves as documented.
+    const manual = process.argv.includes("--manual") || Bun.env.PI_AGENT_MODE === "manual"
+    setMode(manual ? "manual" : "auto")
+
     const rl = createInterface({ input: process.stdin, output: process.stdout })
     setReadline(rl)
-    console.log('pi_agent ready. type your query, "exit" or ctrl-d to quit.')
+    console.log(`pi_agent ready (mode: ${manual ? "manual" : "auto"}). type your query, "exit" or ctrl-d to quit.`)
     rl.setPrompt("> ")
     rl.prompt()
 
