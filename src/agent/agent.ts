@@ -8,7 +8,7 @@ export interface Message {
     content: string;
 }
 
-async function agent(messages: ChatMessages[], loopCnt = 10) {
+async function agent(messages: ChatMessages[], loopCnt = 100) {
     while (loopCnt--) {
         const res = await llmCall(messages)
         const llmResp = res.choices[0]?.message;
@@ -19,6 +19,11 @@ async function agent(messages: ChatMessages[], loopCnt = 10) {
             content: llmResp?.content
         })
         if (llmResp?.toolCalls?.length) {
+            messages.push({
+                role: "assistant",
+                content: llmResp?.content ?? null,
+                toolCalls: llmResp?.toolCalls,
+            });
             for (const call of llmResp.toolCalls) {
                 const args = JSON.parse(call.function.arguments)
                 let toolResult = await runTool(call.function.name, args)
@@ -31,11 +36,7 @@ async function agent(messages: ChatMessages[], loopCnt = 10) {
             }
         }
         else {
-            messages.push({
-                role: 'assistant',
-                content: llmResp?.content
-            })
-            console.log("Final Answer: ", llmResp?.content)
+            console.log(" ######### Final Answer ######### \n ", llmResp?.content)
             return
         }
     }

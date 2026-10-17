@@ -7,7 +7,7 @@ import { bash } from "./bash"
 
 
 type Mode = "auto" | "manual"
-let mode: Mode = "manual"
+let mode: Mode = "auto"
 
 export function setMode(m: Mode) {
   mode = m
