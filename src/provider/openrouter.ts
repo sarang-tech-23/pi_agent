@@ -1,30 +1,95 @@
-import { OpenRouter } from "@openrouter/sdk";
-import type { ChatMessages, ChatResult } from "@openrouter/sdk/models";
-import { CUSTOM_TOOLS } from "../tools/config";
+import type { ChatFunctionTool, ChatMessages } from "@openrouter/sdk/models";
+import type { Message, ToolCall } from "../messages";
+import type { LlmClient, LlmRequest, LlmTurn } from "./port";
 
-const openRouter = new OpenRouter({
-    httpReferer: "localhost",
-    appTitle: "pi_agent",
-    appCategories: "harness",
-    apiKey: Bun.env.OPENROUTER_API_KEY,
-});
+/** Maps harness messages onto the SDK's message shape. */
+function toSdkMessages(messages: Message[]): ChatMessages[] {
+    return messages.map((m): ChatMessages => {
+        switch (m.role) {
+            case "system":
+                return { role: "system", content: m.content };
+            case "user":
+                return { role: "user", content: m.content };
+            case "assistant":
+                return {
+                    role: "assistant",
+                    content: m.content,
+                    ...(m.toolCalls?.length
+                        ? {
+                              toolCalls: m.toolCalls.map((c) => ({
+                                  id: c.id,
+                                  type: "function" as const,
+                                  function: { name: c.name, arguments: c.arguments },
+                              })),
+                          }
+                        : {}),
+                };
+            case "tool":
+                return { role: "tool", toolCallId: m.toolCallId, content: m.content };
+        }
+    });
+}
 
-export async function llmCall(messages: ChatMessages[]): Promise<ChatResult> {
-    const result = await openRouter.chat.send({
-        chatRequest: {
-            stream: false,
-            model: "deepseek/deepseek-v4.1-flash",
-            messages,
-            tools: CUSTOM_TOOLS
-        },
+/** Normalises the SDK response into the harness's provider-neutral turn. */
+function fromSdkResponse(res: any): LlmTurn {
+    const message = res?.choices?.[0]?.message;
+    const toolCalls: ToolCall[] = (message?.toolCalls ?? []).map((c: any) => ({
+        id: c.id,
+        name: c.function?.name,
+        arguments: c.function?.arguments ?? "{}",
+    }));
+    return { content: message?.content ?? null, toolCalls };
+}
+
+export interface OpenRouterOptions {
+    apiKey: string;
+    model: string;
+    /** per-request HTTP timeout, so a stalled provider cannot hang the harness */
+    timeoutMs?: number;
+    maxTokens?: number;
+    temperature?: number;
+    httpReferer?: string;
+    appTitle?: string;
+}
+
+/**
+ * Builds an LlmClient backed by OpenRouter. The SDK import and client are
+ * created lazily so importing this module never requires credentials, and the
+ * tool set arrives per request instead of being imported from the tools layer.
+ */
+export async function createOpenRouterClient(opts: OpenRouterOptions): Promise<LlmClient> {
+    const { OpenRouter } = await import("@openrouter/sdk");
+    const client = new OpenRouter({
+        httpReferer: opts.httpReferer ?? "localhost",
+        appTitle: opts.appTitle ?? "pi_agent",
+        appCategories: "harness",
+        apiKey: opts.apiKey,
     });
 
-    // to supress type warning, openrouter.chat.send return 2 types of responses, streaming 
-    // and not streaming, we want to keep the resutl scoped to just non streaming response
-    if (Symbol.asyncIterator in result) {
-        throw new Error("Expected a non-streaming response");
-    }
+    return {
+        async complete(request: LlmRequest): Promise<LlmTurn> {
+            const result = await client.chat.send(
+                {
+                    chatRequest: {
+                        stream: false,
+                        model: opts.model,
+                        messages: toSdkMessages(request.messages),
+                        tools: request.tools as ChatFunctionTool[],
+                        ...(opts.maxTokens != null ? { maxTokens: opts.maxTokens } : {}),
+                        ...(opts.temperature != null ? { temperature: opts.temperature } : {}),
+                    },
+                },
+                {
+                    ...(opts.timeoutMs != null ? { timeoutMs: opts.timeoutMs } : {}),
+                    ...(request.signal ? { signal: request.signal } : {}),
+                },
+            );
 
-    // console.log("=>> result", JSON.stringify(result))
-    return result;
+            // openrouter.chat.send is typed as streaming or not; we asked for not
+            if (Symbol.asyncIterator in (result as object)) {
+                throw new Error("Expected a non-streaming response");
+            }
+            return fromSdkResponse(result);
+        },
+    };
 }
