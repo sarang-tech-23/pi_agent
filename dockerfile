@@ -14,4 +14,5 @@ RUN mkdir /workspace && chown bun:bun /workspace
 WORKDIR /workspace
 
 USER bun
-CMD ["bun", "run", "/app/src/agent/agent.ts"]
+# set PI_AGENT_MODE=manual to be prompted before writes / non-read-only commands
+CMD ["bun", "run", "/app/src/agent/cli.ts"]
